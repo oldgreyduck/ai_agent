@@ -52,7 +52,7 @@ def call_function(function_call_part, verbose=False):
     args["working_directory"] = "./calculator"
     func = func_map[function_call_part.name]
     function_result = func(**args)
-    print(function_result)
+    # print(function_result)
 
     response = types.Content(
         role="tool",
@@ -85,7 +85,7 @@ def main():
     - Execute Python files with optional arguments
     - Write or overwrite files
 
-    All paths you provide should be relative to the working directory. You do not need to specify the working directory in your function calls as it is automatically injected for security reasons.
+    Always use the available tools to gather information before responding to any code or implementation questions. All paths you provide should be relative to the working directory. You do not need to specify the working directory in your function calls as it is automatically injected for security reasons.
     """
 
     if len(sys.argv) >= 3 and sys.argv[2] == "--verbose":
@@ -97,23 +97,32 @@ def main():
     messages = [
     types.Content(role="user", parts=[types.Part(text=user_prompt)]),
 ]
-
-    response = client.models.generate_content(
-    model="gemini-2.0-flash-001",
-    contents=messages,
-    config=types.GenerateContentConfig(tools=[available_functions], system_instruction=system_prompt),
+    try:
+        for turn in range(20):
+            response = client.models.generate_content(
+            model="gemini-2.0-flash-001",
+            contents=messages,
+            config=types.GenerateContentConfig(tools=[available_functions], system_instruction=system_prompt),
 )
+            for candidate in response.candidates:
+                messages.append(candidate.content)
 
-    if verbose:
-            print(f"Prompt tokens: {response.usage_metadata.prompt_token_count}")
-            print(f"Response tokens: {response.usage_metadata.candidates_token_count}")
+            if response.function_calls:
+                for function_call in response.function_calls:
+                    tool_result = call_function(function_call, verbose)
+                    messages.append(tool_result)
+            else:
+                if response.text:
+                    print("Final response: ")
+                    print(response.text)
+                    break 
 
-    if response.function_calls:
-        for function_call_part in response.function_calls:
-            call_function(function_call_part, verbose)
-    else:
-        print(response.text)
+            if verbose:
+                print(f"Prompt tokens: {response.usage_metadata.prompt_token_count}")
+                print(f"Response tokens: {response.usage_metadata.candidates_token_count}")
 
+    except Exception as e:
+        print(f"Error occured: {e}")
 
 if __name__ == "__main__":
     main()
